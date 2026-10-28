@@ -9,7 +9,7 @@ metadata:
 spec:
   title: "Vercel's Payload Website Starter on Cloudflare Workers, D1 and R2"
   summary: "Payload CMS and the website it publishes — pages from layout blocks, posts, search, redirects, forms, SEO, drafts with live preview, scheduled publishing and the admin — run as one Next.js app on Cloudflare Workers + Static Assets through @opennextjs/cloudflare, the content in Cloudflare D1 and the media in R2, both provisioned by Terraform, the schema applied by db-migrate, the secrets generated in the database; and become an Orun baseline that takes a new site from nothing to live on stage and prod in one landing."
-  state: started
+  state: completed
   milestones:
     - name: "PW0 — the spec"
       exitCriteria:
