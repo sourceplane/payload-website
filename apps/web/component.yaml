@@ -1,0 +1,124 @@
+apiVersion: sourceplane.io/v1
+kind: Component
+metadata:
+  name: web
+  description: The Payload website and its admin (Next.js and Payload CMS on Cloudflare Workers + Static Assets via @opennextjs/cloudflare, per environment)
+spec:
+  type: cloudflare-workers-assets-turbo
+  lifecycle: production
+  owner: platform
+  # Its pages, attached to it in the workspace's catalog: what the Docs
+  # library shows for it, and what the catalog's docs and runbook checks read.
+  # Generated from what this manifest and its sources declare.
+  docs:
+    overview: docs/overview.md
+    pages:
+      - { path: docs/architecture.md, role: architecture, title: Architecture }
+      - { path: docs/runbook.md, role: runbook, title: Runbook }
+  # `app`, not `web`: a domain and a component share one name space in the
+  # catalog, and a domain called `web` hid this component from it.
+  domain: app
+  path: apps/web
+  # Its own lane per environment: the Next.js build is the longest job in the
+  # plan, and a shared lane would wait on it.
+  lane: isolated
+  # INFRA BEFORE APP. The Worker binds the D1 database by id and the R2 bucket
+  # by name, both rendered into its config during the build from the wiring
+  # documents the cloudflare-d1 and cloudflare-r2 roots lease-publish after
+  # their applies; and Payload reads the schema (and its generated secrets)
+  # db-migrate creates in that database. A job resolves its secrets when it
+  # STARTS, so on a merge to main this deploy waits for all three (enforced) —
+  # one convergence runs cloudflare-d1 → db-migrate and cloudflare-r2, then
+  # web, per environment. A pull request deploys nothing, so nothing on one
+  # waits (advisory).
+  dependsOn:
+    - component: cloudflare-d1
+      mode: enforced
+      modeRules:
+        - mode: advisory
+          when:
+            triggerRef: github-pull-request
+    - component: cloudflare-r2
+      mode: enforced
+      modeRules:
+        - mode: advisory
+          when:
+            triggerRef: github-pull-request
+    - component: db-migrate
+      mode: enforced
+      modeRules:
+        - mode: advisory
+          when:
+            triggerRef: github-pull-request
+  secretEnv:
+    WIRING_CLOUDFLARE_D1_STAGE: "secret://payload-website/payload-website/stage/WIRING_CLOUDFLARE_D1"
+    WIRING_CLOUDFLARE_D1_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_D1"
+    WIRING_CLOUDFLARE_R2_STAGE: "secret://payload-website/payload-website/stage/WIRING_CLOUDFLARE_R2"
+    WIRING_CLOUDFLARE_R2_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_R2"
+  subscribe:
+    environments:
+      - name: dev
+        profile: verify
+      - name: stage
+        profile: verify
+        profileRules:
+          - profile: deploy
+            when:
+              triggerRef: github-push-main
+      - name: prod
+        profile: verify
+        profileRules:
+          - profile: deploy
+            when:
+              triggerRef: github-push-main
+  parameters:
+    nodeVersion: "22"
+    pnpmVersion: "10.12.1"
+
+    workspaceDir: ../..
+    appDir: .
+
+    turboFilter: "@app/web"
+    wranglerConfig: wrangler.jsonc
+
+    # @opennextjs/cloudflare emits a Worker entrypoint plus a static-assets
+    # directory bound via ASSETS — both deploy in one `wrangler deploy`.
+    # wrangler `main` is worker.ts, which wraps the generated .open-next/worker.js
+    # with the Cron Trigger's handler; the lane checks the generated one exists.
+    workerEntrypoint: .open-next/worker.js
+    assetsDir: .open-next/assets
+
+    # Per-env worker name: payload-website-web-{dev,stage,prod}.
+    workerName: payload-website-web
+    environmentAwareWorkerName: true
+
+    # The account's workers.dev subdomain; exported to the smoke step as
+    # ${WORKERS_DEV_SUBDOMAIN} and used to build ${DEPLOYED_URL}.
+    workersDevSubdomain: your-workers-subdomain
+
+    installCommand: pnpm install --frozen-lockfile
+    # Render this environment's wrangler config, then build. stage and prod
+    # render from the wiring documents their cloudflare-d1 and cloudflare-r2
+    # applies published (secretEnv above, resolved before the job's first
+    # step); dev, which no root applies to and which only verifies, renders
+    # from the committed fixture. The committed wrangler.jsonc (the fixture
+    # render) is what the composition's verify-app-structure step finds before
+    # this runs. NEXT_PUBLIC_SERVER_URL is the site's origin (CORS, the
+    # sitemaps, canonical and Open Graph links, the admin's preview links):
+    # the environment's SITE_URL when intent.yaml sets one, else its
+    # workers.dev URL. ${ORUN_ENVIRONMENT} the runner sets for every step.
+    buildCommand: node ../../tooling/wire/live.mjs --template wrangler.template.jsonc --out wrangler.jsonc --components cloudflare-d1,cloudflare-r2 --env "${ORUN_ENVIRONMENT}" --fixture wiring.fixture.json --fixture-envs dev && NEXT_PUBLIC_SERVER_URL="${SITE_URL:-https://payload-website-web-${ORUN_ENVIRONMENT}.your-workers-subdomain.workers.dev}" pnpm exec turbo run build --filter=@app/web
+
+    # Smoke: the home page renders the site's header (its search link, there
+    # before any content exists — Payload serves a static home until a home
+    # page is published), the REST API
+    # answers from D1 (`/api/users/me`, `{"user":null}` signed out — it reads
+    # the session tables the migrations created), and the admin is served.
+    # Read-only: a smoke on every deploy must not write into prod. Each
+    # response is buffered before grep so an early match cannot SIGPIPE curl.
+    smokeCommand: "html=$(curl -sfL \"${DEPLOYED_URL}/\") && echo \"${html}\" | grep -q 'href=\"/search\"' && me=$(curl -sf \"${DEPLOYED_URL}/api/users/me\") && echo \"${me}\" | grep -q '\"user\"' && admin=$(curl -sfL \"${DEPLOYED_URL}/admin\") && echo \"${admin}\" | grep -q 'payload'"
+  labels:
+    team: platform
+    layer: delivery
+    surface: web
+    runtime: cloudflare
