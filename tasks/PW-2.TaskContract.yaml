@@ -1,0 +1,21 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: PW-2
+  title: "Payload on Workers, D1 and R2"
+spec:
+  goal: The Payload website runs on Cloudflare Workers + Static Assets with its content in D1 and its media in R2, its schema as migrations applied by db-migrate, its D1 and R2 roots provisioning stage and prod
+  affects:
+    - apps/web
+    - packages/db
+    - infra
+    - tests
+    - tooling/migrations
+    - pnpm-lock.yaml
+    - pnpm-workspace.yaml
+    - README.md
+    - .gitignore
+  doneWhen:
+    - pnpm typecheck, lint, test and build are green
+    - wrangler dev serves the site and the admin on a migrated local D1, the seed writes D1 and R2, and the Cron Trigger runs the job queue
+  gates: []
