@@ -15,7 +15,7 @@
 #      run IN THE TREE THE RUNNER STAGES for each job (testing/lib/stage-job.py),
 #      with the dependency layout the pinned composition produces and with the
 #      job's secrets in its environment as the platform resolves them (the
-#      component's secretEnv):
+#      component's secretEnv, and its environment's: stage's documents only):
 #      - web, from a pull request's plan (the verify profile: the deploy
 #        profile has no dry run) — `verify-app-structure` (which checks the
 #        wrangler config exists BEFORE anything is built), `build-app` (the
@@ -207,15 +207,23 @@ extract "$scratch/plan-main.json" db-migrate stage "$scratch/mig-main"
 # migrated database prove which document they came from.
 d1_id="5ca1ab1e-0000-4000-8000-00000000a001"
 export WIRING_CLOUDFLARE_D1_STAGE='{"d1_database_id":"'"$d1_id"'","d1_database_name":"stg-'"$repo"'-stage"}'
-export WIRING_CLOUDFLARE_D1_PROD='{"d1_database_id":"5ca1ab1e-0000-4000-8000-00000000a003","d1_database_name":"prod-'"$repo"'-prod"}'
 # …and the bucket the R2 root lease-published, under a name no fixture carries.
+# Stage's documents only: prod's are not published here, as on a first
+# convergence whose prod applies have not finished, and the stage lane must
+# not need them.
 r2_bucket="e2e-$repo-stage-bucket"
 export WIRING_CLOUDFLARE_R2_STAGE='{"r2_bucket_name":"'"$r2_bucket"'"}'
-export WIRING_CLOUDFLARE_R2_PROD='{"r2_bucket_name":"e2e-'"$repo"'-prod-bucket"}'
+unset WIRING_CLOUDFLARE_D1_PROD WIRING_CLOUDFLARE_R2_PROD
 
 echo "── the stage web lane: verify-app-structure, build-app, verify-build-output, deploy-dry-run"
-for key in WIRING_CLOUDFLARE_D1_STAGE WIRING_CLOUDFLARE_D1_PROD WIRING_CLOUDFLARE_R2_STAGE WIRING_CLOUDFLARE_R2_PROD; do
+for key in WIRING_CLOUDFLARE_D1_STAGE WIRING_CLOUDFLARE_R2_STAGE; do
   grep -qx "$key" "$scratch/web/secrets" || { echo "FAIL: the stage web lane does not resolve $key" >&2; exit 1; }
+done
+# A job resolves every secret it declares before its first step, and the
+# stage lane waits on stage's applies alone — so a prod document here fails
+# it whenever prod's apply has not published yet.
+for key in WIRING_CLOUDFLARE_D1_PROD WIRING_CLOUDFLARE_R2_PROD; do
+  ! grep -qx "$key" "$scratch/web/secrets" || { echo "FAIL: the stage web lane resolves $key — prod's document, which nothing orders it after" >&2; exit 1; }
 done
 work="$tree/.orun/runs/e2e/web.stage.verify-deploy/work"
 stage_job "$scratch/web" "$work" "$scratch/install-web.log"

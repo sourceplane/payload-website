@@ -191,8 +191,11 @@ orun new --blueprint repo-blueprint.yaml \
 - **Add a binding** (R2, KV, another database): a Terraform root that
   lease-publishes `WIRING_<ROOT>`, a token in `wrangler.template.jsonc`, its
   fixture entry, and in `apps/web/component.yaml` the root in the build's
-  `--components`, the `WIRING_<ROOT>_<ENV>` secretEnv and an enforced
-  `dependsOn` on it. `ai/context/operations.md` in the product says the same.
+  `--components`, the `WIRING_<ROOT>_<ENV>` secretEnv on each deployed
+  environment's own `subscribe` entry (never the component's: every job would
+  then wait on every environment's apply, with nothing ordering it) and an
+  enforced `dependsOn` on it. `ai/context/operations.md` in the product says
+  the same.
 - **Custom domain**: attach it to the Worker in Cloudflare (the product's
   README, "Custom domain"). There is no domain phase: attaching a domain
   needs zone permissions the brokered `workers-deploy` token does not carry.
@@ -254,6 +257,8 @@ at the tag and refuses the whole catalogue if it 404s.
 | db-migrate lane: `No D1 database id` | that environment's D1 apply failed or never ran — read its lane; the migrations wait on it |
 | db-migrate lane: `Checksum mismatch for already-applied migrations` | an applied migration's file was edited; restore it and put the change in a new migration |
 | web lane fails resolving `WIRING_CLOUDFLARE_D1_<ENV>` | that environment's D1 apply failed — read its lane; the web lane waits on it |
+| a web lane fails `Secret not found: WIRING_CLOUDFLARE_R2` (or `_D1`), `unknown-reference`, though its own environment's applies are green | the job declares another environment's document, which nothing orders it after — a product built before the wiring moved onto each environment's subscription declares all four at the component level. Move each `WIRING_*_<ENV>` onto its own environment's `subscribe` entry (this baseline's `apps/web/component.yaml`), merge, and let the convergence run |
+| `02-docs` stops: `the site does not answer — nothing was recorded` | the product was never deployed, or is down — usually a convergence that failed after `01-product` merged, then a resume that found its files in place. Fix the failing lane, retry from `01-product`, then `02-docs` (`docs/phases/02-docs.md`) |
 | the smoke fails and the Worker logs `No PAYLOAD_SECRET` | the migrations did not reach the database the Worker binds (Payload has no schema and no generated secret) — read the db-migrate lane for that environment |
 | deploy lane: the Worker exceeds the size limit (10027) | the account is on Workers Free (3 MiB gzipped); Payload's Worker is about 4 MiB. Move the account to Workers Paid and re-run the phase |
 | R2 lane: Authentication error (10000), or R2 not enabled | the connection's token cannot mint R2 Edit (`r2-data`), or the account has not enabled R2 (dashboard → R2). Fix it and re-run `01-product` |

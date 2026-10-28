@@ -164,7 +164,7 @@ orun integrations list --org <ws> --json && orun cloud check --org <ws>
 | redeploy without a change | edit the last line of `apps/web/component.yaml` (`# orun: redeploy <reason> <stamp>`) and merge — it is a deploy trigger, nothing reads it |
 | query a live database | `wrangler d1 execute <name> --remote --command "SELECT count(*) FROM pages"` (the name is in the environment's `WIRING_CLOUDFLARE_D1`) |
 | set a secret yourself | `pnpm exec wrangler secret put PAYLOAD_SECRET --name payload-website-web-<env>` from `apps/web` (or `PREVIEW_SECRET`, `CRON_SECRET`) |
-| add a binding (KV, another D1) | a Terraform root under `infra/terraform/` that publishes `WIRING_<ROOT>`, a token in `wrangler.template.jsonc`, its fixture entry, the root in the build's `--components`, the `WIRING_<ROOT>_<ENV>` secretEnv and an enforced `dependsOn` on it in `apps/web/component.yaml` |
+| add a binding (KV, another D1) | a Terraform root under `infra/terraform/` that publishes `WIRING_<ROOT>`, a token in `wrangler.template.jsonc`, its fixture entry, the root in the build's `--components`, the `WIRING_<ROOT>_<ENV>` secretEnv on each deployed environment's own `subscribe` entry (not the component's — a job resolves every secret it declares before it starts, and waits only on its own environment's applies) and an enforced `dependsOn` on it in `apps/web/component.yaml` |
 | serve a custom domain | attach it to the Worker in Cloudflare and set `SITE_URL` for the environment in `intent.yaml` — the next deploy builds the site's links for it (README, "Custom domain") — then replace the placeholder `payload-website.example.com` in `intent.yaml`'s `BASE_DOMAIN` with it |
 | headless credentials | `ORUN_TOKEN` (workspace-scoped) + `GITHUB_TOKEN` |
 

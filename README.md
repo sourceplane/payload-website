@@ -120,7 +120,7 @@ infra/db-migrate  dependsOn cloudflare-d1 (enforced on main) · secretEnv WIRING
   apply:  packages/db's runner → POST …/d1/database/<id>/query, each pending migration once
                                                ▼
 apps/web  dependsOn cloudflare-d1 + cloudflare-r2 + db-migrate (enforced on main)
-          · secretEnv WIRING_CLOUDFLARE_D1_<ENV>, WIRING_CLOUDFLARE_R2_<ENV>
+          · secretEnv WIRING_CLOUDFLARE_D1_<ENV>, WIRING_CLOUDFLARE_R2_<ENV> (each environment its own)
   build:  tooling/wire/live.mjs → wrangler.jsonc with the environment's database id and bucket
           (dev, verify-only, renders the fixture) → next build → opennextjs-cloudflare
 ```

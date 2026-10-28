@@ -184,6 +184,14 @@ for f in root.rglob("component.yaml"):
         continue
     d = yaml.safe_load(f.read_text()) or {}
     comps[(d.get("metadata") or {}).get("name")] = (f.relative_to(root).as_posix(), d.get("spec") or {})
+def secret_keys(spec):
+    """Every secretEnv key a component declares: for the whole component, or
+    on one environment's subscription (apps/web declares its wiring there)."""
+    keys = set(spec.get("secretEnv") or {})
+    for e in (spec.get("subscribe") or {}).get("environments") or []:
+        if isinstance(e, dict):
+            keys |= set(e.get("secretEnv") or {})
+    return keys
 publishes = {}
 for name, (rel, spec) in comps.items():
     outs = str((spec.get("parameters") or {}).get("secretOutputs") or "")
@@ -195,7 +203,7 @@ if not publishes:
     bad("no infra component lease-publishes a WIRING_* document — this check has gone blind")
 readers = 0
 for name, (rel, spec) in comps.items():
-    keys = {re.sub(r"_(DEV|STAGE|PROD)$", "", k) for k in (spec.get("secretEnv") or {}) if k.startswith("WIRING_")}
+    keys = {re.sub(r"_(DEV|STAGE|PROD)$", "", k) for k in secret_keys(spec) if k.startswith("WIRING_")}
     for key in sorted(keys):
         readers += 1
         pub = publishes.get(key)
@@ -228,7 +236,7 @@ def enforced_on_main(spec, target):
         r.get("mode") == "advisory" and (r.get("when") or {}).get("triggerRef") == "github-pull-request"
         for r in rules)
 def wiring_read(spec):
-    return {re.sub(r"_(DEV|STAGE|PROD)$", "", k) for k in (spec.get("secretEnv") or {}) if k.startswith("WIRING_")}
+    return {re.sub(r"_(DEV|STAGE|PROD)$", "", k) for k in secret_keys(spec) if k.startswith("WIRING_")}
 migrators = {n: wiring_read(sp) for n, (_, sp) in comps.items() if sp.get("type") == "db-migrate"}
 schema_readers = 0
 for mname, keys in migrators.items():
