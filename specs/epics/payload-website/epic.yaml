@@ -1,0 +1,30 @@
+# The epic's declaration. metadata.name equals the directory name; metadata.key
+# is the task-key prefix this epic reserves (PW → PW-1, PW-2, …). Owner, target
+# date and health are the platform's — never written here.
+apiVersion: orun.io/v1
+kind: Epic
+metadata:
+  name: payload-website
+  key: PW
+spec:
+  title: "Vercel's Payload Website Starter on Cloudflare Workers, D1 and R2"
+  summary: "Payload CMS and the website it publishes — pages from layout blocks, posts, search, redirects, forms, SEO, drafts with live preview, scheduled publishing and the admin — run as one Next.js app on Cloudflare Workers + Static Assets through @opennextjs/cloudflare, the content in Cloudflare D1 and the media in R2, both provisioned by Terraform, the schema applied by db-migrate, the secrets generated in the database; and become an Orun baseline that takes a new site from nothing to live on stage and prod in one landing."
+  state: started
+  milestones:
+    - name: "PW0 — the spec"
+      exitCriteria:
+        - "the repository is born with its intent, CI, tooling and spec index, and this doc set and the task contracts are on main"
+      tasks: [PW-1]
+    - name: "PW1 — Payload on Workers, D1 and R2"
+      exitCriteria:
+        - "apps/web is the template at Payload v3.89.0 with the D1 adapter, the R2 storage adapter and a Cron Trigger, built by OpenNext into one Worker"
+        - "Payload's schema and the site's secrets are packages/db migrations, applied by db-migrate; the D1 and R2 roots provision stage and prod"
+        - "`pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm build` are green"
+        - "`wrangler dev` serves the site and the admin on a migrated local D1; an admin signs up, the seed writes D1 and R2, the Cron Trigger runs the job queue"
+      tasks: [PW-2]
+    - name: "PW2 — a baseline"
+      exitCriteria:
+        - "blueprint.yaml (the console card) and repo-blueprint.yaml (the build) take a new site from nothing to live on stage and prod in one landing, then record it"
+        - "a site built from it carries the site only, renamed throughout to its own name, repository, Worker, database and bucket"
+        - "Baseline CI is green: contract tests, the wiring path, generated component docs, the blueprint read by the pinned orun, the leak gate, the offline bootstrap and the end-to-end tier"
+      tasks: [PW-3]
