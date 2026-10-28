@@ -1,0 +1,41 @@
+// The source of wrangler.jsonc, which tooling/wire renders from it: from
+// wiring.fixture.json for local work (`pnpm run wire:fixture`, committed as
+// that render), and on every Orun lane from the wiring documents the
+// `cloudflare-d1` and `cloudflare-r2` Terraform roots lease-publish
+// (WIRING_CLOUDFLARE_D1_<ENV>, WIRING_CLOUDFLARE_R2_<ENV>) — dev, which no
+// root applies to, from the fixture (component.yaml's buildCommand). Edit this
+// file, never wrangler.jsonc. The workers-assets composition deploys one
+// environment per job with no wrangler `--env`, so `__ENV__` names the
+// environment this is rendered for.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "payload-website-web",
+  // worker.ts: OpenNext's fetch handler and the Cron Trigger's job run.
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  // Payload's job queue (scheduled publishing), once a day — vercel.json's cron.
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
+  // Payload's database — Cloudflare D1 (the D1 adapter) in place of Vercel Postgres.
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "@@wiring(cloudflare-d1/__ENV__:d1_database_name)@@",
+      "database_id": "@@wiring(cloudflare-d1/__ENV__:d1_database_id)@@"
+    }
+  ],
+  // The media uploads — an R2 bucket (the R2 storage adapter) in place of Vercel Blob.
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "@@wiring(cloudflare-r2/__ENV__:r2_bucket_name)@@"
+    }
+  ]
+}

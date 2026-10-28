@@ -8,7 +8,7 @@ somebody else's site in one landing.**
 
 | | |
 |---|---|
-| Status | In progress — PW0 on main |
+| Status | In progress — PW1 on main: the site runs on Workers |
 | Upstream | [payloadcms/payload](https://github.com/payloadcms/payload) `templates/with-vercel-website` (MIT), at tag `v3.89.0` |
 | Reference | [turso-starter](https://github.com/sourceplane/turso-starter) — D1, migrations, db-migrate; [blob-starter](https://github.com/sourceplane/blob-starter) — R2; [cron-starter](https://github.com/sourceplane/cron-starter) — the Cron Trigger |
 | Key | `PW` |

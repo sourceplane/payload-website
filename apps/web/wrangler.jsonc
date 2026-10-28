@@ -1,0 +1,35 @@
+// GENERATED from wrangler.template.jsonc by tooling/wire — edit the
+// template, not this file. The committed copy is the fixture render
+// (`pnpm run wire:fixture`); every Orun lane renders its own environment.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "payload-website-web",
+  // worker.ts: OpenNext's fetch handler and the Cron Trigger's job run.
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  // Payload's job queue (scheduled publishing), once a day — vercel.json's cron.
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
+  // Payload's database — Cloudflare D1 (the D1 adapter) in place of Vercel Postgres.
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "stg-payload-website-stage",
+      "database_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ],
+  // The media uploads — an R2 bucket (the R2 storage adapter) in place of Vercel Blob.
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "stg-payload-website-stage"
+    }
+  ]
+}
