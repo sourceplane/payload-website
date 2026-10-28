@@ -4,7 +4,7 @@
 |---|---|---|
 | PW0 — the spec | ✅ | the repository's first commit |
 | PW1 — Payload on Workers, D1 and R2 | ✅ | PW-2 |
-| PW2 — a baseline | planned | PW-3 |
+| PW2 — a baseline | ✅ | PW-3, tagged `baseline-v1` |
 
 ## Departures from the upstream template
 

@@ -7,6 +7,6 @@ folder is the adoption; the merge creates the epic in the workspace.
 
 | Epic | Cluster | Status | What it is |
 |------|---------|--------|------------|
-| [`payload-website/`](./payload-website/) | **PW** | In progress (PW1: the site on Workers) | Vercel's Payload Website Starter — Payload CMS and its site — on Cloudflare Workers, D1 and R2, and an Orun baseline that instantiates it (PW2) |
+| [`payload-website/`](./payload-website/) | **PW** | ✅ Shipped (`baseline-v1`); not yet live | Vercel's Payload Website Starter — Payload CMS and its site — on Cloudflare Workers, D1 and R2, and an Orun baseline that instantiates it (PW2) |
 
 As-built ≠ intent: what shipped lives in each epic's `IMPLEMENTATION-STATUS.md`.
