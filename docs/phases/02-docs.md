@@ -13,7 +13,7 @@ no phase may require this one.)
 |---|---|
 | `promotion` | restores `environments.prod.promotion` — from now on prod deploys only after stage |
 | `dev-lanes` | restores dev's activation on pushes to main |
-| `render` | `hooks/render-deployment-docs.sh`: probes `/`, `/api/users/me` (whether Payload answered from its D1 database) and `/admin` on both environments and regenerates `ai/context/deployment.md` — the identity, the probed URLs, the secrets the deployment uses by name — and the README's live-deployment section. It asks the platform nothing: what the workspace holds right now is on the console's Secrets and Integrations pages, which the record points to |
+| `render` | `hooks/render-deployment-docs.sh`: probes `/`, `/api/users/me` (whether Payload answered from its D1 database) and `/admin` on both environments and regenerates `ai/context/deployment.md` — the identity, the probed URLs, the secrets the deployment uses by name — and the README's live-deployment section. **A URL that does not answer (2xx or 3xx) after three rounds, ten seconds apart, fails the hook before it writes anything**, naming each one, so the phase stops instead of recording a site that is not up as live. It asks the platform nothing: what the workspace holds right now is on the console's Secrets and Integrations pages, which the record points to |
 | `task` | finds the phase's task and yields its key |
 | `land` | one PR, its commit checked in the box (`checks: local`) and merged. It touches no component, so it deploys nothing — and there is nothing after it to wait for: the render's probes are the phase's check |
 
@@ -26,6 +26,23 @@ domain: every generated section is re-rendered from scratch.
 orun new --blueprint repo-blueprint.yaml --out <site-checkout> \
   --run-hooks --phase 02-docs --values <values.yaml>
 ```
+
+## If the render says the site does not answer
+
+Nothing was written and nothing landed: the record is written from what
+answers. The site was never deployed, or is down. The usual cause is a
+convergence that failed after `01-product` merged — and a resume that then
+found `01-product`'s files in place and went straight to this phase. Read the
+main branch's last CI run for the lane that failed and fix it, then re-run
+`01-product` (the console's Retry, from `01-product`, or
+`--phase 01-product`), whose `retouch` marker re-plans every component, and
+then this phase.
+
+To record a site that does not answer anyway (an offline run, where nothing
+is deployed), set `DEPLOYMENT_DOCS_ALLOW_DOWN=1`: the record shows what the
+probes found and the README says the site was not answering — never that it
+is live. `DEPLOYMENT_DOCS_PROBE_ATTEMPTS` and `DEPLOYMENT_DOCS_PROBE_INTERVAL`
+set the rounds and the seconds between them.
 
 ## If a bootstrap stops before this phase
 

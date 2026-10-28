@@ -22,6 +22,15 @@
 #      the real document and refuse to run without it, and a verify-only one
 #      (`dev`, where no root applies) must render from the fixture.
 #
+# And one more, which failed a real first convergence: each environment's job
+# resolves its OWN environment's documents and no other's. A job resolves
+# every secret it declares before its first step, and the dependsOn edges
+# order it after its own environment's applies only — so a stage job that
+# also declares prod's document fails whenever prod's apply has not
+# published yet ("Secret not found: WIRING_CLOUDFLARE_R2"). The secrets a job
+# declares are the component's `secretEnv` merged with its environment's
+# subscription's, which is how orun plans them.
+#
 # Every templated deployable in the tree is checked, against the commands
 # its own component.yaml declares.
 #
@@ -63,11 +72,15 @@ for name, c in comps.items():
     if not tpl.exists():
         continue
     params = c["spec"].get("parameters") or {}
-    envs = [e["name"] for e in (c["spec"].get("subscribe") or {}).get("environments") or []]
+    subs = (c["spec"].get("subscribe") or {}).get("environments") or []
+    envs = [e["name"] for e in subs]
     tokens = sorted(set(re.findall(r"@@wiring\(([a-z0-9-]+)/__ENV__:([A-Za-z0-9_]+)\)@@", tpl.read_text())))
+    # What each environment's job declares: the component's secretEnv, then
+    # its subscription's over it (orun's precedence).
+    secret_env = {e["name"]: {**(c["spec"].get("secretEnv") or {}), **(e.get("secretEnv") or {})} for e in subs}
     deployables.append({"name": name, "dir": c["dir"], "envs": envs, "tokens": tokens,
                         "build": params.get("buildCommand") or "", "config": params.get("wranglerConfig") or "",
-                        "secretEnv": sorted((c["spec"].get("secretEnv") or {}).keys())})
+                        "secretEnv": secret_env})
 print(json.dumps({"publishers": publishers, "deployables": deployables}))
 PY
 n="$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['deployables']))" "$tmp/facts.json")"
@@ -86,7 +99,7 @@ PY
 
   # 1 + 2: every token resolves against what its root outputs, and the
   # fixture covers every environment the deployable builds for.
-  python3 - "$tmp/facts.json" "$i" "$root" <<'PY' && ok "every token names a key its root outputs; the fixture covers every environment, the dev rung included" || fail=1
+  python3 - "$tmp/facts.json" "$i" "$root" <<'PY' && ok "every token names a key its root outputs; the fixture covers every environment, the dev rung included; each environment resolves its own documents alone" || fail=1
 import json, pathlib, sys
 facts = json.load(open(sys.argv[1])); d = facts["deployables"][int(sys.argv[2])]; root = pathlib.Path(sys.argv[3])
 pubs = facts["publishers"]
@@ -106,8 +119,29 @@ for comp, key in d["tokens"]:
             problems.append(f"the fixture has no {comp}/{env}:{key} — the {env} lane renders it")
     for env in p["envs"]:
         want = f"{p['key']}_{env.upper()}"
-        if env in d["envs"] and want not in d["secretEnv"]:
-            problems.append(f"{env} deploys after {comp} applies there, and secretEnv does not resolve {want}")
+        if env in d["envs"] and want not in d["secretEnv"].get(env, {}):
+            problems.append(f"{env} deploys after {comp} applies there, and its secretEnv does not resolve {want}")
+# Each job's wiring: its own environment's documents, from its own rung, and
+# none where no root applies (dev renders the fixture).
+for env, declared in d["secretEnv"].items():
+    for k, ref in sorted(declared.items()):
+        if not k.startswith("WIRING_"):
+            continue
+        owner = next(((comp, p, e) for comp, p in pubs.items() for e in d["envs"] + p["envs"]
+                      if k == f"{p['key']}_{e.upper()}"), None)
+        if not owner:
+            problems.append(f"the {env} job resolves {k}, which is no root's WIRING_<ROOT>_<ENV> document")
+            continue
+        comp, p, of = owner
+        if of != env:
+            problems.append(f"the {env} job resolves {k} — {of}'s document. A job resolves every secret before "
+                            f"its first step and waits only on its own environment's applies, so it fails whenever "
+                            f"{of}'s {comp} apply has not published yet; declare {k} on the {of} subscription alone")
+        elif env not in p["envs"]:
+            problems.append(f"the {env} job resolves {k}, but {comp} never applies on {env} — nothing publishes it "
+                            f"(a verify-only environment renders the fixture)")
+        elif not ref.endswith(f"/{env}/{p['key']}"):
+            problems.append(f"the {env} job resolves {k} from {ref}, not from the {env} rung's {p['key']}")
 for p in problems:
     print(f"   ✕  {p}", file=sys.stderr)
 sys.exit(1 if problems else 0)

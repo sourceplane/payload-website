@@ -672,7 +672,11 @@ phases:
   # Places nothing. It records what 01-product built, from PROBED facts rather
   # than from what the blueprint intended — which is why it runs last. Its
   # render probes every URL as it writes the record, and this landing
-  # redeploys nothing, so there is no probe after it to wait for.
+  # redeploys nothing, so there is no probe after it to wait for. A URL that
+  # does not answer stops the render before it writes anything, naming each
+  # one: a build whose deploy never happened (a convergence that failed after
+  # its merge, then a resume that found 01-product's files in place) stops
+  # here rather than finish "live".
   - name: 02-docs
     title: The deployment, recorded
     description: The live-deployment manifest, rendered from probed reality, and the promotion gate and dev's lanes put back.
@@ -680,7 +684,7 @@ phases:
     narrate:
       start:  "Now recording what was actually built — probing every URL and writing the deployment manifest into the repository."
       done:   "ai/context/deployment.md now records the live deployment, written from probed facts, and prod waits on stage again. {{ .meta.elapsed }}."
-      failed: "The deployment record did not land. The site is still live; only the write-up is missing."
+      failed: "The deployment record did not land. If the render named URLs that did not answer, the site is not up — the product's deploy broke or never ran: fix its lane, then retry from 01-product. Otherwise the site is untouched; only the write-up is missing."
     modules: []
     requires:
       phases: [01-product]
@@ -697,6 +701,8 @@ phases:
         # And dev verifies every merge to main again (01-product deferred it).
         - id: dev-lanes
           run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/dev-lanes.mjs", "--restore"]
+        # Probes every URL (a few rounds) and refuses — exit 1, nothing written,
+        # nothing landed — when one does not answer.
         - id: render
           run: ["bash", "{{ .baseline.dir }}/hooks/render-deployment-docs.sh", ".", "{{ .inputs.orunWorkspace }}", "{{ .baseline.dir }}"]
         - id: task

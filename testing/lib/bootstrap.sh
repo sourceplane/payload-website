@@ -12,7 +12,11 @@
 #     next phase's placement sees on the real thing too;
 #   - `link` (a `run:` hook that calls `orun cloud`) is skipped — it needs a
 #     workspace;
-#   - `{{ .inputs.* }}` render from the fixture.
+#   - `{{ .inputs.* }}` render from the fixture;
+#   - nothing is deployed, so the deployment-docs render, which refuses to
+#     record a site that does not answer, runs with
+#     DEPLOYMENT_DOCS_ALLOW_DOWN=1 and records what it found (testing/
+#     deployment-docs.test.sh checks the refusal itself).
 # Everything else — the rebrand, the re-tenant, the work-tree strip, the
 # deferrals and their restore, the retouch marker, the deployment-docs
 # render — runs exactly as declared.
@@ -40,7 +44,7 @@ PY
       echo "FAIL: $phase did not place" >&2; tail -20 "$logs/place-$phase.log" >&2; return 1
     fi
     echo "── $phase: post hooks"
-    if ! python3 "$root/testing/lib/run-hooks.py" "$root/repo-blueprint.yaml" "$phase" post \
+    if ! DEPLOYMENT_DOCS_ALLOW_DOWN=1 python3 "$root/testing/lib/run-hooks.py" "$root/repo-blueprint.yaml" "$phase" post \
          "$tree" "$root" "$values" --skip link > "$logs/hooks-$phase.log" 2>&1; then
       echo "FAIL: $phase's post hooks" >&2; tail -30 "$logs/hooks-$phase.log" >&2; return 1
     fi

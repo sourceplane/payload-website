@@ -15,8 +15,10 @@
 // `--fixture-envs` names those environments, and for them — only them — a
 // missing document renders from the committed fixture instead. Every other
 // environment needs the real document: a deploy job resolves it before its
-// first step (the component's secretEnv), so a missing one here is a real
-// fault, never a reason to deploy a placeholder id.
+// first step (its environment's secretEnv in the component's `subscribe` —
+// its own environment's documents only, since a job waits on its own
+// environment's applies alone), so a missing one here is a real fault, never
+// a reason to deploy a placeholder id.
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

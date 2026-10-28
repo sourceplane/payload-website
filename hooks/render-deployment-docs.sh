@@ -20,6 +20,20 @@
 #
 # No secret VALUE is ever read or written here — secrets are named, not read.
 #
+# A SITE THAT DOES NOT ANSWER IS NOT RECORDED. Every URL is probed first; one
+# that is still not answering (2xx or 3xx) after a few rounds fails the hook
+# BEFORE anything is written, naming each URL, so the phase stops instead of
+# landing a record — and a README — that call a site live when it is not.
+# This record is the bootstrap's last word: a build whose deploy never
+# happened must stop here, not finish "live".
+#
+#   DEPLOYMENT_DOCS_PROBE_ATTEMPTS  probe rounds before giving up (default 3)
+#   DEPLOYMENT_DOCS_PROBE_INTERVAL  seconds between rounds (default 10)
+#   DEPLOYMENT_DOCS_ALLOW_DOWN=1    record what answered anyway, in one round
+#                                   — for an offline run, where nothing is
+#                                   deployed; the README then says the site
+#                                   was not answering, never that it is live
+#
 # IT ASKS THE PLATFORM NOTHING. The record used to carry the workspace's slug,
 # its secrets listed per rung and its integrations — five CLI calls, one after
 # another, from the build box — and all of it is what the console shows live
@@ -44,7 +58,7 @@ sub="$(val subdomain)"; [ -n "$sub" ] || sub="your-workers-subdomain"
 [ -n "$ws" ] || ws="?"
 
 # CI lane pin (what version the deploy lanes run).
-lanepin="$(sed -n 's/^ *version: *\(v[0-9.]*\) *$/\1/p' .github/workflows/ci.yml 2>/dev/null | head -1)"
+lanepin="$(sed -n 's/^ *version: *\(v[0-9.]*\) *$/\1/p' .github/workflows/ci.yml 2>/dev/null | head -1)" || true
 [ -n "$lanepin" ] || lanepin="?"
 
 # Every page is rendered per request by the Worker, which reads Payload's
@@ -74,15 +88,64 @@ badge() { # "<code> <api|no-api>"
   esac
 }
 
+answers() { # "<code> <api|no-api>" → 0 when it answered (2xx or 3xx)
+  case "${1%% *}" in 2*|3*) return 0 ;; *) return 1 ;; esac
+}
+
+allow_down="${DEPLOYMENT_DOCS_ALLOW_DOWN:-}"
+attempts="${DEPLOYMENT_DOCS_PROBE_ATTEMPTS:-3}"
+interval="${DEPLOYMENT_DOCS_PROBE_INTERVAL:-10}"
+case "$attempts$interval" in *[!0-9]*|"") echo "render-docs: DEPLOYMENT_DOCS_PROBE_ATTEMPTS and _INTERVAL must be whole numbers" >&2; exit 2 ;; esac
+[ "$attempts" -ge 1 ] || attempts=1
+[ -z "$allow_down" ] || attempts=1
+
 stage_url="https://${brand}-web-stage.${sub}.workers.dev"
 prod_url="https://${brand}-web-prod.${sub}.workers.dev"
-rows=""
+# label | the URL the record shows | the URL probed
+surfaces=()
 for pair in "stage|$stage_url" "prod|$prod_url"; do
   env="${pair%%|*}"; url="${pair#*|}"
-  rows+="| site (${env}) | ${url} | $(badge "$(probe "$url/")") |"$'\n'
-  rows+="| API (${env}) | ${url}/api/users/me | $(badge "$(probe "$url/api/users/me")") |"$'\n'
-  rows+="| admin (${env}) | ${url}/admin | $(badge "$(probe "$url/admin")") |"$'\n'
+  surfaces+=("site (${env})|${url}|${url}/" "API (${env})|${url}/api/users/me|${url}/api/users/me" "admin (${env})|${url}/admin|${url}/admin")
 done
+got=()
+round=1
+while :; do
+  down=0
+  for i in "${!surfaces[@]}"; do
+    if [ -n "${got[$i]:-}" ] && answers "${got[$i]}"; then continue; fi
+    IFS='|' read -r _label _shown probed <<< "${surfaces[$i]}"
+    got[i]="$(probe "$probed")"
+    answers "${got[$i]}" || down=$((down + 1))
+  done
+  if [ "$down" -eq 0 ] || [ "$round" -ge "$attempts" ]; then break; fi
+  echo "render-docs: ${down} of ${#surfaces[@]} URL(s) not answering — probing again in ${interval}s (round ${round} of ${attempts})"
+  sleep "$interval"
+  round=$((round + 1))
+done
+
+rows=""; down_list=""
+for i in "${!surfaces[@]}"; do
+  IFS='|' read -r label shown _probed <<< "${surfaces[$i]}"
+  rows+="| ${label} | ${shown} | $(badge "${got[$i]}") |"$'\n'
+  answers "${got[$i]}" || down_list+="  ${label}: ${shown} → $(badge "${got[$i]}")"$'\n'
+done
+live=yes
+if [ -n "$down_list" ]; then
+  live=no
+  if [ -z "$allow_down" ]; then
+    {
+      echo "render-docs: the site does not answer — nothing was recorded. Not answering:"
+      printf '%s' "$down_list"
+      echo "render-docs: the record is written from what answers, and these did not: the site was never deployed, or is down."
+      echo "render-docs: read the main branch's last CI run for the failing lane and fix it, then re-run 01-product (the console's Retry, from 01-product) and this phase."
+    } >&2
+    exit 1
+  fi
+  echo "render-docs: DEPLOYMENT_DOCS_ALLOW_DOWN is set — recording a site that does not answer:"
+  printf '%s' "$down_list"
+fi
+not_live_note=""
+[ "$live" = yes ] || not_live_note=$'\n'"> Not every URL answered when this record was written."$'\n'
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -111,6 +174,7 @@ cat > ai/context/deployment.md <<EOF
 | declared in | \`intent.yaml\` → \`execution.state.workspace\` |
 | Workers | \`${brand}-web-stage\`, \`${brand}-web-prod\` on \`${sub}.workers.dev\` |
 | D1 databases | \`stg-${repo}-stage\`, \`prod-${repo}-prod\` (\`infra/terraform/cloudflare-d1\`); their ids reach the migrations and the Workers as \`WIRING_CLOUDFLARE_D1\` on each environment |
+| R2 buckets | \`stg-${repo}-stage\`, \`prod-${repo}-prod\` (\`infra/terraform/cloudflare-r2\`); their names reach the Workers as \`WIRING_CLOUDFLARE_R2\` on each environment |
 | schema | \`packages/db\` migrations, applied by \`infra/db-migrate\` before each deploy |
 | CI lane CLI pin | orun \`${lanepin}\` (\`.github/workflows/ci.yml\`) |
 
@@ -118,9 +182,9 @@ cat > ai/context/deployment.md <<EOF
 
 | surface | URL | status |
 |---|---|---|
-${rows}
-The \`dev\` environment is verify-only by design — no deployed URL and no
-database.
+${rows}${not_live_note}
+The \`dev\` environment is verify-only by design — no deployed URL, no
+database and no bucket.
 
 ## Secrets (names only)
 
@@ -128,8 +192,10 @@ database.
 |---|---|---|
 | \`CLOUDFLARE_API_TOKEN\` | the workspace | BROKERED from its Cloudflare connection (\`workers-deploy\`): deploys the Worker |
 | \`CLOUDFLARE_D1_TOKEN\` | the workspace | BROKERED (\`d1-edit\`): applies the database and runs its migrations |
+| \`CLOUDFLARE_R2_TOKEN\` | the workspace | BROKERED (\`r2-data\`): applies the media bucket |
 | \`CLOUDFLARE_ACCOUNT_ID\` | the workspace | the connection's account id — a fact, not a credential |
 | \`WIRING_CLOUDFLARE_D1\` | \`${repo}\` on stage and on prod | written by the D1 root's apply: the database's id and name, not a credential |
+| \`WIRING_CLOUDFLARE_R2\` | \`${repo}\` on stage and on prod | written by the R2 root's apply: the bucket's name, not a credential |
 
 Brokered secrets are minted per run, so no long-lived value is at rest. What
 the workspace holds right now (every secret by name, and its integrations
@@ -140,17 +206,26 @@ and their health) is on the console's Secrets and Integrations pages for
 
 Merges to \`main\` converge automatically: CI plans the changed components and
 runs each lane with \`orun run --remote-state\` against the workspace above —
-per environment the D1 database first, then its migrations, then the site.
-See [operations.md](operations.md) for the full operating contract.
+per environment the D1 database and the R2 bucket first, then the migrations,
+then the site. See [operations.md](operations.md) for the full operating
+contract.
 EOF
 echo "render-docs: wrote ai/context/deployment.md"
 
-python3 - <<'PY'
-import re
+RENDER_LIVE="$live" RENDER_NOW="$now" python3 - <<'PY'
+import os, re
 begin, end = "<!-- 02-docs:begin -->", "<!-- 02-docs:end -->"
+# "live" only when every probed URL answered; a record written anyway
+# (DEPLOYMENT_DOCS_ALLOW_DOWN) says what it found.
+if os.environ["RENDER_LIVE"] == "yes":
+    lead = """This site is **live**. Verified URLs, identity and the secrets it uses are
+recorded in"""
+else:
+    lead = f"""This site was **not answering** when this record was written
+({os.environ["RENDER_NOW"]}). The probe results, identity and the secrets it
+uses are recorded in"""
 body = f"""{begin}
-This site is **live**. Verified URLs, identity and the secrets it uses are
-recorded in [ai/context/deployment.md](ai/context/deployment.md) (re-rendered
+{lead} [ai/context/deployment.md](ai/context/deployment.md) (re-rendered
 by the `02-docs` phase); how it deploys and how to operate it:
 [ai/context/operations.md](ai/context/operations.md).
 {end}"""

@@ -30,7 +30,9 @@ spec:
   # STARTS, so on a merge to main this deploy waits for all three (enforced) —
   # one convergence runs cloudflare-d1 → db-migrate and cloudflare-r2, then
   # web, per environment. A pull request deploys nothing, so nothing on one
-  # waits (advisory).
+  # waits (advisory). These edges order a job after its OWN environment's
+  # applies only, which is why each environment declares its own wiring
+  # documents and no other (`subscribe` below).
   dependsOn:
     - component: cloudflare-d1
       mode: enforced
@@ -50,11 +52,17 @@ spec:
         - mode: advisory
           when:
             triggerRef: github-pull-request
-  secretEnv:
-    WIRING_CLOUDFLARE_D1_STAGE: "secret://payload-website/payload-website/stage/WIRING_CLOUDFLARE_D1"
-    WIRING_CLOUDFLARE_D1_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_D1"
-    WIRING_CLOUDFLARE_R2_STAGE: "secret://payload-website/payload-website/stage/WIRING_CLOUDFLARE_R2"
-    WIRING_CLOUDFLARE_R2_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_R2"
+  # EACH ENVIRONMENT RESOLVES ITS OWN WIRING, AND NOTHING ELSE. A job resolves
+  # every secret it declares before its first step, and fails on one that is
+  # not stored yet. A component-level secretEnv is declared on EVERY
+  # environment's job, so when it named both environments' documents, the
+  # stage deploy also needed prod's: on a first convergence, with stage and
+  # prod applying side by side and no edge ordering one after the other, the
+  # stage deploy failed whenever a prod apply had not published yet ("Secret
+  # not found: WIRING_CLOUDFLARE_R2"). The build only reads its own
+  # environment's documents (live.mjs `--env`), so each subscription below
+  # declares those, and dev — verify-only, rendered from the fixture, where no
+  # root applies — declares none.
   subscribe:
     environments:
       - name: dev
@@ -65,12 +73,18 @@ spec:
           - profile: deploy
             when:
               triggerRef: github-push-main
+        secretEnv:
+          WIRING_CLOUDFLARE_D1_STAGE: "secret://payload-website/payload-website/stage/WIRING_CLOUDFLARE_D1"
+          WIRING_CLOUDFLARE_R2_STAGE: "secret://payload-website/payload-website/stage/WIRING_CLOUDFLARE_R2"
       - name: prod
         profile: verify
         profileRules:
           - profile: deploy
             when:
               triggerRef: github-push-main
+        secretEnv:
+          WIRING_CLOUDFLARE_D1_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_D1"
+          WIRING_CLOUDFLARE_R2_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_R2"
   parameters:
     nodeVersion: "22"
     pnpmVersion: "10.12.1"
@@ -99,11 +113,12 @@ spec:
     installCommand: pnpm install --frozen-lockfile
     # Render this environment's wrangler config, then build. stage and prod
     # render from the wiring documents their cloudflare-d1 and cloudflare-r2
-    # applies published (secretEnv above, resolved before the job's first
-    # step); dev, which no root applies to and which only verifies, renders
-    # from the committed fixture. The committed wrangler.jsonc (the fixture
-    # render) is what the composition's verify-app-structure step finds before
-    # this runs. NEXT_PUBLIC_SERVER_URL is the site's origin (CORS, the
+    # applies published (their subscription's secretEnv above, resolved
+    # before the job's first step); dev, which no root applies to and which
+    # only verifies, renders from the committed fixture. The committed
+    # wrangler.jsonc (the fixture render) is what the composition's
+    # verify-app-structure step finds before this runs.
+    # NEXT_PUBLIC_SERVER_URL is the site's origin (CORS, the
     # sitemaps, canonical and Open Graph links, the admin's preview links):
     # the environment's SITE_URL when intent.yaml sets one, else its
     # workers.dev URL. ${ORUN_ENVIRONMENT} the runner sets for every step.
