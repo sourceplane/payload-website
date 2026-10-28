@@ -1,0 +1,38 @@
+node_modules/
+dist/
+.next/
+.open-next/
+.wrangler/
+.turbo/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+.env*.local
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.log
+plan.json
+next-env.d.ts
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+crash.log
+.workspace/
+
+# orun per-job staged workspaces and object-model caches.
+**/.orun/runs/
+**/.orun/
+
+# apps/web/wrangler.jsonc is NOT ignored: it is committed as the fixture render
+# of wrangler.template.jsonc, because the deploy lane checks the config exists
+# before it builds (and re-renders it for its environment in the build).
+
+# What the build's next-sitemap step writes into public/, and Payload's local
+# media directory (uploads go to R2; nothing is written there on Workers).
+apps/web/public/robots.txt
+apps/web/public/sitemap*.xml
+apps/web/public/media/
