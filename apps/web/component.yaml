@@ -85,6 +85,33 @@ spec:
         secretEnv:
           WIRING_CLOUDFLARE_D1_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_D1"
           WIRING_CLOUDFLARE_R2_PROD: "secret://payload-website/payload-website/prod/WIRING_CLOUDFLARE_R2"
+  # How the site runs itself for orun.work's live Preview tab
+  # (saas-parallel-baselining PB4): `orun preview` starts this, and a coding
+  # session keeps it running while it works, so the person watches it change
+  # as it is built. The dev server binds the box's loopback only, on a fixed
+  # port, and installs first, so a checkout the session has not installed yet
+  # still comes up.
+  # The site and its Payload admin, one Next.js app: `next dev` reaches the
+  # Worker's D1 and R2 through wrangler's platform proxy, which keeps them
+  # LOCAL (files under .wrangler/, nothing listening, no Cloudflare login).
+  # Before it starts, packages/db's migrations are applied to that local D1,
+  # as `pnpm db:migrate:local` does: they are idempotent, and the last one
+  # generates the app's own signing secrets into it, which Payload refuses to
+  # start without. Only this app's packages are installed (`--filter ...`);
+  # `next` runs itself, not `pnpm exec next`, with a 1 GiB heap cap. The site
+  # opens on its built-in home page until content is created or seeded from
+  # the admin.
+  preview:
+    run:
+      - sh
+      - -c
+      - pnpm install --frozen-lockfile --prefer-offline --filter "@app/web..." && PATH=node_modules/.bin:$PATH node ../../tooling/migrations/local.mjs && exec node_modules/.bin/next dev -H 127.0.0.1 -p 3000
+    port: 3000
+    path: /
+    env:
+      NODE_OPTIONS: --no-deprecation --max-old-space-size=1024
+      NEXT_TELEMETRY_DISABLED: "1"
+      WRANGLER_SEND_METRICS: "false"
   parameters:
     nodeVersion: "22"
     pnpmVersion: "10.12.1"
